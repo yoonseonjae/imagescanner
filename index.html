@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>스마트 문서 스캐너 (교육용 버전)</title>
+    <meta name="description" content="AI 기반 웹 문서 스캐너 - 기울어진 문서 사진을 평면 스캔 이미지로 변환">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- 🏫 교육용 모듈 로드 -->
+    <!-- 학생들과 함께 분석할 파일들입니다! -->
+    <script src="js/scanner.js"></script>
+    <!-- 🎨 필터 모듈 (기능별로 쪼갰어요!) -->
+    <script src="js/filters/transform.js"></script>
+    <script src="js/filters/texture.js"></script>
+    <script src="js/filters/color.js"></script>
+    <script src="js/filters/contour.js"></script>
+    <script src="js/filters/index.js"></script>
+    
+    <!-- OpenCV.js -->
+    <script>
+        // OpenCV.js 로딩 완료 플래그
+        var opencvReady = false;
+        function onOpenCvReady() {
+            opencvReady = true;
+            console.log('OpenCV.js 완전 로딩 완료!');
+        }
+    </script>
+    <script async src="https://docs.opencv.org/4.x/opencv.js" onload="
+        if (typeof cv !== 'undefined') {
+            if (cv.Mat) {
+                onOpenCvReady();
+            } else {
+                cv['onRuntimeInitialized'] = onOpenCvReady;
+            }
+        }
+    "></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#f0f9ff', 100: '#e0f2fe', 200: '#bae6fd', 300: '#7dd3fc', 
+                            400: '#38bdf8', 500: '#0ea5e9', 600: '#0284c7', 700: '#0369a1',
+                            800: '#075985', 900: '#0c4a6e',
+                        },
+                        accent: {
+                            400: '#a78bfa', 500: '#8b5cf6', 600: '#7c3aed',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        * { font-family: 'Inter', sans-serif; }
+        body { background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%); min-height: 100vh; }
+        .glass-card { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .drop-zone { background: linear-gradient(135deg, rgba(14, 165, 233, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%); border: 2px dashed rgba(14, 165, 233, 0.5); transition: all 0.3s ease; }
+        .drop-zone:hover, .drop-zone.dragover { background: linear-gradient(135deg, rgba(14, 165, 233, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%); border-color: rgba(14, 165, 233, 0.8); transform: scale(1.02); }
+        .btn-primary { background: linear-gradient(135deg, #0ea5e9 0%, #8b5cf6 100%); transition: all 0.3s ease; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 40px rgba(14, 165, 233, 0.3); }
+        .btn-secondary { background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); transition: all 0.3s ease; }
+        .btn-secondary:hover { background: rgba(255, 255, 255, 0.2); }
+        .btn-secondary.active { background: linear-gradient(135deg, #0ea5e9 0%, #8b5cf6 100%); border-color: transparent; }
+        .slider-container input[type="range"] { -webkit-appearance: none; width: 100%; height: 6px; background: linear-gradient(90deg, #0ea5e9 0%, #8b5cf6 100%); border-radius: 3px; outline: none; }
+        .slider-container input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; background: white; border-radius: 50%; cursor: pointer; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3); transition: transform 0.2s ease; }
+        .slider-container input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+        .canvas-container { position: relative; overflow: hidden; border-radius: 12px; background: rgba(0, 0, 0, 0.3); }
+        .canvas-container canvas { max-width: 100%; max-height: 400px; object-fit: contain; }
+        .loading-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, 0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
+        .spinner { width: 60px; height: 60px; border: 4px solid rgba(14, 165, 233, 0.2); border-top-color: #0ea5e9; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fadeIn 0.5s ease forwards; }
+        .glow { box-shadow: 0 0 30px rgba(14, 165, 233, 0.3), 0 0 60px rgba(139, 92, 246, 0.2); }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback } = React;
+        
+        // 색상 모드 상수
+        const COLOR_MODES = {
+            ORIGINAL: 'original',
+            GRAYSCALE: 'grayscale',
+            SCAN: 'scan'
+        };
+        
+        // 메인 앱 컴포넌트
+        function App() {
+            const [cvReady, setCvReady] = useState(false);
+            const [loading, setLoading] = useState(true);
+            const [processing, setProcessing] = useState(false);
+            const [originalImage, setOriginalImage] = useState(null);
+            const [scannedImage, setScannedImage] = useState(null);
+            const [originalImageSrc, setOriginalImageSrc] = useState(null); // 원본 이미지 소스 저장
+            
+            // 필터 상태 변수들
+            const [colorMode, setColorMode] = useState(COLOR_MODES.ORIGINAL);
+            const [intensity, setIntensity] = useState(127);
+            const [edgeDetection, setEdgeDetection] = useState(false);
+            const [adaptiveThreshold, setAdaptiveThreshold] = useState(false);
+            const [adaptiveBlockSize, setAdaptiveBlockSize] = useState(11);
+            const [blurAmount, setBlurAmount] = useState(0);
+            const [spotColorMode, setSpotColorMode] = useState('none');
+            const [contrastValue, setContrastValue] = useState(100);
+            const [sharpenAmount, setSharpenAmount] = useState(0);
+            const [contourOverlay, setContourOverlay] = useState(false);
+            const [rotationAngle, setRotationAngle] = useState(0);
+            const [flipHorizontal, setFlipHorizontal] = useState(false);
+            const [flipVertical, setFlipVertical] = useState(false);
+            
+            // 출력 사이즈 상태
+            const [outputSize, setOutputSize] = useState('original');
+            
+            const [dragOver, setDragOver] = useState(false);
+            const [detectionSuccess, setDetectionSuccess] = useState(false);
+            
+            const originalCanvasRef = useRef(null);
+            const resultCanvasRef = useRef(null);
+            const fileInputRef = useRef(null);
+            
+            // OpenCV.js 로딩 확인
+            useEffect(() => {
+                const checkOpenCV = () => {
+                    if (typeof cv !== 'undefined' && cv.Mat && typeof cv.imread === 'function' && window.ScannerUtils) {
+                        setCvReady(true);
+                        setLoading(false);
+                        console.log('OpenCV.js 및 교육용 모듈 준비 완료!');
+                    } else if (window.opencvReady && window.ScannerUtils) {
+                        setCvReady(true);
+                        setLoading(false);
+                         console.log('OpenCV.js 및 교육용 모듈 준비 완료! (flag)');
+                    } else {
+                        setTimeout(checkOpenCV, 200);
+                    }
+                };
+                setTimeout(checkOpenCV, 1000);
+            }, []);
+            
+            // 이미지 처리 함수 (ScannerUtils 사용)
+            const processImage = useCallback((imageSrc) => {
+                if (!cvReady) {
+                    alert('OpenCV.js가 로딩 중입니다.');
+                    return;
+                }
+                setProcessing(true);
+                
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => {
+                    try {
+                        const tempCanvas = document.createElement('canvas');
+                        tempCanvas.width = img.width;
+                        tempCanvas.height = img.height;
+                        const tempCtx = tempCanvas.getContext('2d');
+                        tempCtx.drawImage(img, 0, 0);
+                        
+                        const src = cv.imread(tempCanvas);
+                        
+                        // [모듈 사용] 1. 문서 찾기
+                        console.log('문서 감지 시작...');
+                        const docInfo = ScannerUtils.findDocument(src);
+                        
+                        let displayOriginal = src.clone(); // 화면 표시용 원본 (빨간 테두리 없이 깨끗하게)
+                        let result;
+                        
+                        if (docInfo) {
+                            console.log('문서 감지 성공!', docInfo.area);
+                            
+                            // [모듈 사용] 2. 문서 펴기
+                            result = ScannerUtils.scanDocument(src, docInfo.contour);
+                            setDetectionSuccess(true);
+                            docInfo.contour.delete();
+                        } else {
+                            console.log('문서 감지 실패, 원본 사용');
+                            result = src.clone();
+                            setDetectionSuccess(false);
+                        }
+                        
+                        // React State 업데이트 (메모리 관리 포함)
+                        setOriginalImage(prev => {
+                            if (prev) prev.delete(); // 이전 이미지 삭제
+                            return displayOriginal;
+                        });
+                        
+                        setScannedImage(prev => {
+                            if (prev) prev.delete(); // 이전 결과 삭제
+                            return result;
+                        });
+                        
+                        src.delete(); // 임시 로드한 원본 메모리 해제
+                        
+                    } catch (error) {
+                        console.error('이미지 처리 오류:', error);
+                        alert('오류 발생: ' + error.message);
+                    } finally {
+                        setProcessing(false);
+                    }
+                };
+                img.src = imageSrc;
+            }, [cvReady]);
+            
+            // 필터 적용 (FilterUtils 사용)
+            useEffect(() => {
+                if (!scannedImage || !cvReady || !resultCanvasRef.current) return;
+                
+                try {
+                    // [모듈 사용] 필터 옵션 객체 만들기
+                    const options = {
+                        rotation: rotationAngle,
+                        flipH: flipHorizontal,
+                        flipV: flipVertical,
+                        blur: blurAmount,
+                        sharpen: sharpenAmount,
+                        mode: colorMode,
+                        intensity: intensity,
+                        adaptive: adaptiveThreshold,
+                        blockSize: adaptiveBlockSize,
+                        edge: edgeDetection,
+                        contour: contourOverlay,
+                        spotColor: spotColorMode,
+                        contrast: contrastValue
+                    };
+                    
+                    // 모든 필터 한 번에 적용
+                    const filtered = FilterUtils.applyAll(scannedImage, options);
+                    
+                    // 출력 사이즈 정의 (가로 x 세로 픽셀, 300DPI 기준)
+                    const OUTPUT_SIZES = {
+                        original: { label: '1:1 (원본)', width: null, height: null },
+                        a4_portrait: { label: 'A4 세로', width: 2480, height: 3508 },
+                        a4_landscape: { label: 'A4 가로', width: 3508, height: 2480 },
+                        b3_portrait: { label: 'B3 세로', width: 4169, height: 5906 },
+                        b3_landscape: { label: 'B3 가로', width: 5906, height: 4169 },
+                        a3_portrait: { label: 'A3 세로', width: 3508, height: 4961 },
+                        a3_landscape: { label: 'A3 가로', width: 4961, height: 3508 },
+                        letter_portrait: { label: 'Letter 세로', width: 2550, height: 3300 },
+                        letter_landscape: { label: 'Letter 가로', width: 3300, height: 2550 },
+                    };
+                    
+                    const sizeConfig = OUTPUT_SIZES[outputSize];
+                    
+                    // 용지 사이즈가 선택된 경우 리사이즈 적용
+                    if (sizeConfig && sizeConfig.width && sizeConfig.height) {
+                        const resized = new cv.Mat();
+                        cv.resize(filtered, resized, new cv.Size(sizeConfig.width, sizeConfig.height), 0, 0, cv.INTER_LINEAR);
+                        cv.imshow(resultCanvasRef.current, resized);
+                        resized.delete();
+                    } else {
+                        cv.imshow(resultCanvasRef.current, filtered);
+                    }
+                    
+                    filtered.delete(); // 메모리 해제
+                    
+                } catch (error) {
+                    console.error('필터 적용 오류:', error);
+                }
+            }, [colorMode, intensity, scannedImage, edgeDetection, adaptiveThreshold, adaptiveBlockSize, 
+                blurAmount, spotColorMode, contrastValue, sharpenAmount, contourOverlay, 
+                rotationAngle, flipHorizontal, flipVertical, cvReady, outputSize]);
+            
+            // 원본 이미지 표시
+            useEffect(() => {
+                if (originalImage && originalCanvasRef.current) {
+                    cv.imshow(originalCanvasRef.current, originalImage);
+                }
+            }, [originalImage]);
+            
+            // 파일 처리 관련 함수들
+            const handleFile = useCallback((file) => {
+                if (!file || !file.type.startsWith('image/')) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const imageSrc = e.target.result;
+                    setOriginalImageSrc(imageSrc); // 원본 이미지 소스 저장
+                    processImage(imageSrc);
+                };
+                reader.readAsDataURL(file);
+            }, [processImage]);
+            
+            const handleDragOver = (e) => { e.preventDefault(); setDragOver(true); };
+            const handleDragLeave = (e) => { e.preventDefault(); setDragOver(false); };
+            const handleDrop = (e) => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files[0]); };
+            const handleFileSelect = (e) => handleFile(e.target.files[0]);
+            
+            // 출력 사이즈 정의 (가로 x 세로 픽셀, 300DPI 기준)
+            const OUTPUT_SIZES = {
+                original: { label: '1:1 (원본)', width: null, height: null },
+                a4_portrait: { label: 'A4 세로', width: 2480, height: 3508 },
+                a4_landscape: { label: 'A4 가로', width: 3508, height: 2480 },
+                b3_portrait: { label: 'B3 세로', width: 4169, height: 5906 },
+                b3_landscape: { label: 'B3 가로', width: 5906, height: 4169 },
+                a3_portrait: { label: 'A3 세로', width: 3508, height: 4961 },
+                a3_landscape: { label: 'A3 가로', width: 4961, height: 3508 },
+                letter_portrait: { label: 'Letter 세로', width: 2550, height: 3300 },
+                letter_landscape: { label: 'Letter 가로', width: 3300, height: 2550 },
+            };
+            
+            const downloadImage = () => {
+                const canvas = resultCanvasRef.current;
+                if (!canvas) return;
+                
+                const sizeConfig = OUTPUT_SIZES[outputSize];
+                
+                // 원본 크기로 다운로드
+                if (!sizeConfig.width || !sizeConfig.height) {
+                    const link = document.createElement('a');
+                    link.download = `scan_${Date.now()}.png`;
+                    link.href = canvas.toDataURL('image/png');
+                    link.click();
+                    return;
+                }
+                
+                // 지정된 크기로 리사이즈하여 다운로드 (꽉 채워서 늘리기)
+                const outputCanvas = document.createElement('canvas');
+                outputCanvas.width = sizeConfig.width;
+                outputCanvas.height = sizeConfig.height;
+                const ctx = outputCanvas.getContext('2d');
+                
+                // 이미지를 용지 사이즈에 꽉 채워서 늘리기 (비율 무시)
+                ctx.drawImage(canvas, 0, 0, outputCanvas.width, outputCanvas.height);
+                
+                const link = document.createElement('a');
+                link.download = `scan_${sizeConfig.label.replace(/ /g, '_')}_${Date.now()}.png`;
+                link.href = outputCanvas.toDataURL('image/png');
+                link.click();
+            };
+            
+            // 필터 초기화 + perspective 다시 수행 (원본 소스로 재처리)
+            const resetFilters = () => {
+                // 필터 상태 초기화
+                setColorMode(COLOR_MODES.ORIGINAL);
+                setIntensity(127);
+                setEdgeDetection(false);
+                setAdaptiveThreshold(false);
+                setAdaptiveBlockSize(11);
+                setBlurAmount(0);
+                setSpotColorMode('none');
+                setContrastValue(100);
+                setSharpenAmount(0);
+                setContourOverlay(false);
+                setRotationAngle(0);
+                setFlipHorizontal(false);
+                setFlipVertical(false);
+                setOutputSize('original');
+                
+                // 현재 scannedImage 삭제하고 원본 소스로 다시 perspective transform 수행
+                if (originalImageSrc) {
+                    if (scannedImage) {
+                        scannedImage.delete();
+                        setScannedImage(null);
+                    }
+                    if (originalImage) {
+                        originalImage.delete();
+                        setOriginalImage(null);
+                    }
+                    processImage(originalImageSrc);
+                }
+            };
+            
+            // 완전 초기화 (이미지도 삭제하고 홈으로)
+            const resetApp = () => {
+                if (originalImage) originalImage.delete();
+                if (scannedImage) scannedImage.delete();
+                setOriginalImage(null);
+                setScannedImage(null);
+                resetFilters();
+                setDetectionSuccess(false);
+                
+                // 캔버스 클리어
+                const clearCanvas = (ref) => {
+                    if (ref.current) {
+                        const ctx = ref.current.getContext('2d');
+                        ctx.clearRect(0, 0, ref.current.width, ref.current.height);
+                    }
+                };
+                clearCanvas(originalCanvasRef);
+                clearCanvas(resultCanvasRef);
+            };
+            
+            // UI 렌더링
+            if (loading) {
+                return (
+                    <div className="loading-overlay">
+                        <div className="spinner mb-6"></div>
+                        <h2 className="text-white text-xl font-medium">강의 실습 준비 중...</h2>
+                        <p className="text-gray-400 mt-2">OpenCV.js와 모듈을 불러오고 있어요</p>
+                    </div>
+                );
+            }
+            
+            return (
+                <div className="min-h-screen py-8 px-4">
+                    <div className="max-w-6xl mx-auto">
+                        <header className="text-center mb-8 animate-fade-in">
+                            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-primary-400 to-accent-400 bg-clip-text text-transparent mb-3">
+                                스마트 문서 스캐너
+                            </h1>
+                            <p className="text-gray-400 text-lg">
+                                수업 시간에 배운 기술로 문서를 스캔하고 꾸며보세요! 🎓
+                            </p>
+                        </header>
+                        
+                        {!scannedImage && (
+                            <div 
+                                className={`drop-zone rounded-2xl p-12 text-center cursor-pointer mb-8 animate-fade-in ${dragOver ? 'dragover' : ''}`}
+                                onDragOver={handleDragOver}
+                                onDragLeave={handleDragLeave}
+                                onDrop={handleDrop}
+                                onClick={() => fileInputRef.current?.click()}
+                            >
+                                <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} className="hidden" />
+                                <div className="mb-4">
+                                    <svg className="w-16 h-16 mx-auto text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                    </svg>
+                                </div>
+                                <h3 className="text-xl font-medium text-white mb-2">이미지를 드래그하거나 클릭하여 업로드</h3>
+                                <p className="text-gray-400">JPG, PNG, WEBP 지원</p>
+                            </div>
+                        )}
+                        
+                        {processing && (
+                            <div className="loading-overlay">
+                                <div className="spinner mb-6"></div>
+                                <h2 className="text-white text-xl font-medium">분석 중...</h2>
+                                <p className="text-gray-400 mt-2">문서의 테두리를 찾고 있어요!</p>
+                            </div>
+                        )}
+                        
+                        {scannedImage && (
+                            <div className="animate-fade-in">
+                                <div className={`mb-6 p-4 rounded-xl ${detectionSuccess ? 'bg-green-500/20 border border-green-500/30' : 'bg-yellow-500/20 border border-yellow-500/30'}`}>
+                                    <p className={`text-center ${detectionSuccess ? 'text-green-300' : 'text-yellow-300'}`}>
+                                        {detectionSuccess 
+                                            ? '✓ 문서를 찾아서 반듯하게 폈어요! (Perspective Transform)'
+                                            : '⚠ 문서를 찾지 못했어요. 원본 이미지를 그대로 사용합니다.'}
+                                    </p>
+                                </div>
+                                
+                                <div className="grid md:grid-cols-2 gap-6 mb-8">
+                                    <div className="glass-card rounded-2xl p-4">
+                                        <h3 className="text-white font-medium mb-3 flex items-center gap-2">원본 이미지</h3>
+                                        <div className="canvas-container flex items-center justify-center min-h-[300px]">
+                                            <canvas ref={originalCanvasRef} className="rounded-lg"></canvas>
+                                        </div>
+                                    </div>
+                                    <div className="glass-card rounded-2xl p-4 glow">
+                                        <h3 className="text-white font-medium mb-3 flex items-center gap-2">결과 이미지</h3>
+                                        <div className="canvas-container flex items-center justify-center min-h-[300px]">
+                                            <canvas ref={resultCanvasRef} className="rounded-lg"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div className="grid md:grid-cols-2 gap-6 mb-6">
+                                    <div className="glass-card rounded-2xl p-6">
+                                        <h3 className="text-white font-medium mb-4">필터 설정</h3>
+                                        
+                                        <div className="flex flex-wrap gap-3 mb-6">
+                                            <button onClick={() => setColorMode(COLOR_MODES.ORIGINAL)} className={`btn-secondary px-5 py-2.5 rounded-xl text-white font-medium ${colorMode === COLOR_MODES.ORIGINAL ? 'active' : ''}`}>원본</button>
+                                            <button onClick={() => setColorMode(COLOR_MODES.GRAYSCALE)} className={`btn-secondary px-5 py-2.5 rounded-xl text-white font-medium ${colorMode === COLOR_MODES.GRAYSCALE ? 'active' : ''}`}>흑백 (Grayscale)</button>
+                                            <button onClick={() => setColorMode(COLOR_MODES.SCAN)} className={`btn-secondary px-5 py-2.5 rounded-xl text-white font-medium ${colorMode === COLOR_MODES.SCAN ? 'active' : ''}`}>스캔 모드 (Binary)</button>
+                                        </div>
+                                        
+                                        {colorMode === COLOR_MODES.SCAN && (
+                                            <div className="slider-container">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <label className="text-gray-300">스캔 강도 (Threshold)</label>
+                                                    <span className="text-primary-400 font-mono">{intensity}</span>
+                                                </div>
+                                                <input type="range" min="50" max="200" value={intensity} onChange={(e) => setIntensity(parseInt(e.target.value))} className="w-full" />
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    <div className="glass-card rounded-2xl p-6">
+                                        <h3 className="text-white font-medium mb-4">출력 결과</h3>
+                                        
+                                        <div className="mb-4">
+                                            <label className="text-gray-300 text-sm block mb-2">용지 사이즈 (Paper Size)</label>
+                                            <select 
+                                                value={outputSize} 
+                                                onChange={(e) => setOutputSize(e.target.value)}
+                                                className="w-full bg-slate-700/50 border border-slate-600 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-primary-400 transition-colors"
+                                            >
+                                                <option value="original">1:1 (원본 크기)</option>
+                                                <option value="a4_portrait">A4 세로 (210×297mm)</option>
+                                                <option value="a4_landscape">A4 가로 (297×210mm)</option>
+                                                <option value="a3_portrait">A3 세로 (297×420mm)</option>
+                                                <option value="a3_landscape">A3 가로 (420×297mm)</option>
+                                                <option value="b3_portrait">B3 세로 (353×500mm)</option>
+                                                <option value="b3_landscape">B3 가로 (500×353mm)</option>
+                                                <option value="letter_portrait">Letter 세로 (8.5×11in)</option>
+                                                <option value="letter_landscape">Letter 가로 (11×8.5in)</option>
+                                            </select>
+                                        </div>
+                                        
+                                        <p className="text-gray-400 text-xs">
+                                            💡 선택한 사이즈로 이미지가 리사이즈되어 다운로드됩니다. (300DPI 기준)
+                                        </p>
+                                    </div>
+                                </div>
+                                
+                                <div className="glass-card rounded-2xl p-6 mb-6">
+                                    <h3 className="text-white font-medium mb-4 flex items-center gap-2">이미지꾸미기</h3>
+                                    
+                                    <div className="flex flex-wrap gap-2 mb-6">
+                                        <button onClick={() => setEdgeDetection(!edgeDetection)} className={`btn-secondary px-4 py-2 rounded-lg text-sm flex-1 ${edgeDetection ? 'active' : ''}`}>{edgeDetection ? '✓ ' : ''}엣지 감지 (Canny)</button>
+                                        <button onClick={() => setAdaptiveThreshold(!adaptiveThreshold)} className={`btn-secondary px-4 py-2 rounded-lg text-sm flex-1 ${adaptiveThreshold ? 'active' : ''}`}>{adaptiveThreshold ? '✓ ' : ''}적응형 이진화 (Adaptive)</button>
+                                        <button onClick={() => setContourOverlay(!contourOverlay)} className={`btn-secondary px-4 py-2 rounded-lg text-sm flex-1 ${contourOverlay ? 'active' : ''}`}>{contourOverlay ? '✓ ' : ''}윤곽선 오버레이 (Contours)</button>
+                                    </div>
+                                    
+                                    <div className="space-y-4 mb-6">
+                                        <div className="slider-container">
+                                            <div className="flex justify-between items-center mb-2"><label className="text-gray-300 text-sm">블러 (Gaussian Blur)</label><span className="text-primary-400 font-mono text-sm">{blurAmount}</span></div>
+                                            <input type="range" min="0" max="20" value={blurAmount} onChange={(e) => setBlurAmount(parseInt(e.target.value))} className="w-full" />
+                                        </div>
+                                        <div className="slider-container">
+                                            <div className="flex justify-between items-center mb-2"><label className="text-gray-300 text-sm">샤프닝 (Sharpen)</label><span className="text-primary-400 font-mono text-sm">{sharpenAmount}</span></div>
+                                            <input type="range" min="0" max="100" value={sharpenAmount} onChange={(e) => setSharpenAmount(parseInt(e.target.value))} className="w-full" />
+                                        </div>
+                                        <div className="slider-container">
+                                            <div className="flex justify-between items-center mb-2"><label className="text-gray-300 text-sm">대비 조절 (Contrast)</label><span className="text-primary-400 font-mono text-sm">{contrastValue}%</span></div>
+                                            <input type="range" min="50" max="200" value={contrastValue} onChange={(e) => setContrastValue(parseInt(e.target.value))} className="w-full" />
+                                        </div>
+                                        
+                                        <div className="mb-4">
+                                            <label className="text-gray-300 text-sm block mb-2">스팟 컬러 (Color Highlight)</label>
+                                            <div className="grid grid-cols-4 gap-2">
+                                                <button onClick={() => setSpotColorMode('none')} className={`py-2 rounded-lg text-sm border font-medium ${spotColorMode === 'none' ? 'bg-gray-600 border-gray-500 text-white' : 'bg-transparent border-gray-600 text-gray-400 hover:bg-gray-700'}`}>없음</button>
+                                                <button onClick={() => setSpotColorMode('red')} className={`py-2 rounded-lg text-sm border font-medium flex items-center justify-center gap-1 ${spotColorMode === 'red' ? 'bg-red-500/30 border-red-500 text-red-300' : 'bg-transparent border-gray-600 text-gray-400 hover:bg-gray-700'}`}><div className="w-2 h-2 rounded-full bg-red-500"></div>빨강</button>
+                                                <button onClick={() => setSpotColorMode('green')} className={`py-2 rounded-lg text-sm border font-medium flex items-center justify-center gap-1 ${spotColorMode === 'green' ? 'bg-green-500/30 border-green-500 text-green-300' : 'bg-transparent border-gray-600 text-gray-400 hover:bg-gray-700'}`}><div className="w-2 h-2 rounded-full bg-green-500"></div>초록</button>
+                                                <button onClick={() => setSpotColorMode('blue')} className={`py-2 rounded-lg text-sm border font-medium flex items-center justify-center gap-1 ${spotColorMode === 'blue' ? 'bg-blue-500/30 border-blue-500 text-blue-300' : 'bg-transparent border-gray-600 text-gray-400 hover:bg-gray-700'}`}><div className="w-2 h-2 rounded-full bg-blue-500"></div>파랑</button>
+                                            </div>
+                                        </div>
+                                        
+                                        {adaptiveThreshold && (
+                                            <div className="slider-container">
+                                                <div className="flex justify-between items-center mb-2"><label className="text-gray-300 text-sm">블록 크기 (Block Size)</label><span className="text-primary-400 font-mono text-sm">{adaptiveBlockSize}</span></div>
+                                                <input type="range" min="3" max="51" step="2" value={adaptiveBlockSize} onChange={(e) => setAdaptiveBlockSize(parseInt(e.target.value))} className="w-full" />
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    <div className="mb-4">
+                                        <label className="text-gray-300 text-sm block mb-2">회전 및 대칭 (Rotate & Flip)</label>
+                                        <div className="flex gap-2 mb-2">
+                                            <button onClick={() => setRotationAngle((prev) => (prev - 90 + 360) % 360)} className="btn-secondary px-4 py-2 rounded-lg text-sm flex-1">↺ 90° 왼쪽</button>
+                                            <button onClick={() => setRotationAngle(0)} className={`btn-secondary px-4 py-2 rounded-lg text-sm ${rotationAngle === 0 ? 'active' : ''}`}>{rotationAngle}°</button>
+                                            <button onClick={() => setRotationAngle((prev) => (prev + 90) % 360)} className="btn-secondary px-4 py-2 rounded-lg text-sm flex-1">90° 오른쪽 ↻</button>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => setFlipHorizontal(!flipHorizontal)} className={`btn-secondary px-4 py-2 rounded-lg text-sm flex-1 ${flipHorizontal ? 'active' : ''}`}>{flipHorizontal ? '✓ ' : ''}↔ 좌우 대칭</button>
+                                            <button onClick={() => setFlipVertical(!flipVertical)} className={`btn-secondary px-4 py-2 rounded-lg text-sm flex-1 ${flipVertical ? 'active' : ''}`}>{flipVertical ? '✓ ' : ''}↕ 상하 대칭</button>
+                                        </div>
+                                    </div>
+                                    
+                                    <button onClick={resetFilters} className="w-full btn-secondary px-4 py-2 rounded-lg text-sm border-2 border-yellow-500/50 hover:bg-yellow-500/20">🔄 모든 효과 초기화</button>
+                                </div>
+                                
+                                <div className="flex flex-wrap gap-4 justify-center">
+                                    <button onClick={downloadImage} className="btn-primary px-8 py-3 rounded-xl text-white font-medium flex items-center gap-2">
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                        결과 다운로드
+                                    </button>
+                                    <button onClick={() => setScannedImage(null)} className="btn-secondary px-8 py-3 rounded-xl text-white font-medium flex items-center gap-2">
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                                        새 이미지 업로드
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        
+                        <footer className="mt-12 text-center text-gray-500 text-sm">
+                            <p>OpenCV.js 기반 문서 스캐너 • 교육용 리팩토링 버전</p>
+                        </footer>
+                    </div>
+                </div>
+            );
+        }
+        
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
