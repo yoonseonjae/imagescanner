@@ -536,12 +536,25 @@
                                 </div>
                                 
                                 <div className="glass-card rounded-2xl p-6 mb-6">
-                                    <h3 className="text-white font-medium mb-4 flex items-center gap-2">이미지꾸미기</h3>
+                                    <h3 className="text-white font-medium mb-2 flex items-center gap-2">이미지꾸미기</h3>
+                                    <p className="text-gray-400 text-xs mb-4">💡 엣지 감지, 적응형 이진화, 윤곽선 오버레이는 '흑백' 모드에서만 사용할 수 있습니다.</p>
                                     
                                     <div className="flex flex-wrap gap-2 mb-6">
-                                        <button onClick={() => setEdgeDetection(!edgeDetection)} className={`btn-secondary px-4 py-2 rounded-lg text-sm flex-1 ${edgeDetection ? 'active' : ''}`}>{edgeDetection ? '✓ ' : ''}엣지 감지 (Canny)</button>
-                                        <button onClick={() => setAdaptiveThreshold(!adaptiveThreshold)} className={`btn-secondary px-4 py-2 rounded-lg text-sm flex-1 ${adaptiveThreshold ? 'active' : ''}`}>{adaptiveThreshold ? '✓ ' : ''}적응형 이진화 (Adaptive)</button>
-                                        <button onClick={() => setContourOverlay(!contourOverlay)} className={`btn-secondary px-4 py-2 rounded-lg text-sm flex-1 ${contourOverlay ? 'active' : ''}`}>{contourOverlay ? '✓ ' : ''}윤곽선 오버레이 (Contours)</button>
+                                        <button 
+                                            onClick={() => colorMode === COLOR_MODES.GRAYSCALE && setEdgeDetection(!edgeDetection)} 
+                                            disabled={colorMode !== COLOR_MODES.GRAYSCALE}
+                                            className={`btn-secondary px-4 py-2 rounded-lg text-sm flex-1 ${edgeDetection ? 'active' : ''} ${colorMode !== COLOR_MODES.GRAYSCALE ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                        >{edgeDetection ? '✓ ' : ''}엣지 감지 (Canny)</button>
+                                        <button 
+                                            onClick={() => colorMode === COLOR_MODES.GRAYSCALE && setAdaptiveThreshold(!adaptiveThreshold)} 
+                                            disabled={colorMode !== COLOR_MODES.GRAYSCALE}
+                                            className={`btn-secondary px-4 py-2 rounded-lg text-sm flex-1 ${adaptiveThreshold ? 'active' : ''} ${colorMode !== COLOR_MODES.GRAYSCALE ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                        >{adaptiveThreshold ? '✓ ' : ''}적응형 이진화 (Adaptive)</button>
+                                        <button 
+                                            onClick={() => colorMode === COLOR_MODES.GRAYSCALE && setContourOverlay(!contourOverlay)} 
+                                            disabled={colorMode !== COLOR_MODES.GRAYSCALE}
+                                            className={`btn-secondary px-4 py-2 rounded-lg text-sm flex-1 ${contourOverlay ? 'active' : ''} ${colorMode !== COLOR_MODES.GRAYSCALE ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                        >{contourOverlay ? '✓ ' : ''}윤곽선 오버레이 (Contours)</button>
                                     </div>
                                     
                                     <div className="space-y-4 mb-6">
