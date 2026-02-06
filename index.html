@@ -168,11 +168,25 @@
                 img.crossOrigin = 'anonymous';
                 img.onload = () => {
                     try {
+                        // 📱 모바일 대응: 이미지 전처리
+                        // 1. 큰 이미지 리사이즈 (메모리 절약 및 처리 속도 향상)
+                        const maxSize = 1920;
+                        let targetWidth = img.width;
+                        let targetHeight = img.height;
+                        
+                        if (img.width > maxSize || img.height > maxSize) {
+                            const scale = Math.min(maxSize / img.width, maxSize / img.height);
+                            targetWidth = Math.round(img.width * scale);
+                            targetHeight = Math.round(img.height * scale);
+                            console.log(`이미지 리사이즈: ${img.width}x${img.height} -> ${targetWidth}x${targetHeight}`);
+                        }
+                        
                         const tempCanvas = document.createElement('canvas');
-                        tempCanvas.width = img.width;
-                        tempCanvas.height = img.height;
+                        tempCanvas.width = targetWidth;
+                        tempCanvas.height = targetHeight;
                         const tempCtx = tempCanvas.getContext('2d');
-                        tempCtx.drawImage(img, 0, 0);
+                        // EXIF 방향은 최신 브라우저에서 자동 처리됨
+                        tempCtx.drawImage(img, 0, 0, targetWidth, targetHeight);
                         
                         const src = cv.imread(tempCanvas);
                         
